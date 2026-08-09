@@ -1,4 +1,4 @@
-# OT-MPSI
+# T-OT-MPSI
 
 ## Installation
 

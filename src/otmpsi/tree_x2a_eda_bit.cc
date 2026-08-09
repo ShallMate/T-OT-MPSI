@@ -118,43 +118,57 @@ size_t ClosePairBitOtState(PairBitOtState &state) {
 size_t RefreshAggregateShare(size_t party_id, std::vector<uint64_t> &share,
                              const OtmpsiParams &params) {
   size_t comm_bytes = 0;
-  oc::PRNG prng(oc::sysRandomSeed());
-
-  if (party_id > 0) {
-    const size_t lo = party_id - 1;
-    const auto tag = MakeSocketTag(params.base_port,
-                                   1000 + PairId(lo, party_id, params.parties),
-                                   kTreeRefreshChannel);
-    auto sock = AcquireLocalSocket(tag, 1);
-    std::vector<uint8_t> delta(params.set_size);
-    macoro::sync_wait(
-        sock.recv(coproto::span<uint8_t>(delta.data(), delta.size())));
-    for (size_t row = 0; row < params.set_size; ++row) {
-      share[row] = SubRing(static_cast<uint8_t>(share[row]), delta[row]);
+  struct PairRefresh {
+    std::vector<uint8_t> delta;
+    size_t comm_bytes = 0;
+  };
+  std::vector<std::future<PairRefresh>> jobs(params.parties);
+  for (size_t peer = 0; peer < params.parties; ++peer) {
+    if (peer == party_id) {
+      continue;
     }
-    macoro::sync_wait(sock.flush());
-    comm_bytes += static_cast<size_t>(sock.bytesSent() + sock.bytesReceived());
-    macoro::sync_wait(sock.close());
+    jobs[peer] = std::async(std::launch::async, [&, peer] {
+      const size_t lo = std::min(party_id, peer);
+      const size_t hi = std::max(party_id, peer);
+      const bool sender_role = party_id == lo;
+      const auto tag = MakeSocketTag(
+          params.base_port, 1000 + PairId(lo, hi, params.parties),
+          kTreeRefreshChannel);
+      auto sock = AcquireLocalSocket(tag, sender_role ? 0 : 1);
+      PairRefresh result;
+      result.delta.resize(params.set_size);
+      if (sender_role) {
+        oc::PRNG prng(oc::sysRandomSeed());
+        for (auto &value : result.delta) {
+          value = static_cast<uint8_t>(BlockToU64(prng.get()) & kRingMask);
+        }
+        macoro::sync_wait(sock.send(coproto::span<const uint8_t>(
+            result.delta.data(), result.delta.size())));
+      } else {
+        macoro::sync_wait(sock.recv(coproto::span<uint8_t>(
+            result.delta.data(), result.delta.size())));
+      }
+      macoro::sync_wait(sock.flush());
+      result.comm_bytes =
+          static_cast<size_t>(sock.bytesSent() + sock.bytesReceived());
+      macoro::sync_wait(sock.close());
+      return result;
+    });
   }
 
-  if (party_id + 1 < params.parties) {
-    const size_t hi = party_id + 1;
-    const auto tag = MakeSocketTag(params.base_port,
-                                   1000 + PairId(party_id, hi, params.parties),
-                                   kTreeRefreshChannel);
-    auto sock = AcquireLocalSocket(tag, 0);
-    std::vector<uint8_t> delta(params.set_size);
-    for (auto &value : delta) {
-      value = static_cast<uint8_t>(BlockToU64(prng.get()) & kRingMask);
+  for (size_t peer = 0; peer < params.parties; ++peer) {
+    if (peer == party_id) {
+      continue;
     }
-    macoro::sync_wait(
-        sock.send(coproto::span<const uint8_t>(delta.data(), delta.size())));
+    auto result = jobs[peer].get();
+    comm_bytes += result.comm_bytes;
     for (size_t row = 0; row < params.set_size; ++row) {
-      share[row] = AddRing(static_cast<uint8_t>(share[row]), delta[row]);
+      share[row] = party_id < peer
+                       ? AddRing(static_cast<uint8_t>(share[row]),
+                                 result.delta[row])
+                       : SubRing(static_cast<uint8_t>(share[row]),
+                                 result.delta[row]);
     }
-    macoro::sync_wait(sock.flush());
-    comm_bytes += static_cast<size_t>(sock.bytesSent() + sock.bytesReceived());
-    macoro::sync_wait(sock.close());
   }
   return comm_bytes;
 }

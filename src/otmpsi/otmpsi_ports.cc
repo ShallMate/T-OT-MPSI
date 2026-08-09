@@ -33,9 +33,7 @@ std::vector<std::string> ProtocolSocketTags(const OtmpsiParams &params) {
       tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 8));
       if (UsesTreeX2aRoute(params)) {
         tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 14));
-        if (j == i + 1) {
-          tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 15));
-        }
+        tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 15));
         if (params.final_output_mode == FinalOutputMode::kLeaderOnly) {
           tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 17));
         }

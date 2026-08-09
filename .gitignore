@@ -1,0 +1,5 @@
+/build*/
+/install*/
+/bench_results/
+*.log
+*.csv

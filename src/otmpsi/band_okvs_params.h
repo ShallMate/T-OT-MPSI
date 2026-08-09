@@ -10,7 +10,7 @@ struct BandOkvsParams {
   int num_vars = 0;
   int band_length = 0;
   double epsilon = 0.03;
-  int statistical_security = 40;
+  int statistical_security = 48;
   double fitted_security = 0.0;
 };
 

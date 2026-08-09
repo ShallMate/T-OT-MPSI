@@ -11,7 +11,7 @@
 namespace examples::otmpsi {
 namespace {
 
-constexpr int kDefaultStatisticalSecurity = 40;
+constexpr int kDefaultStatisticalSecurity = 48;
 constexpr double kDefaultEpsilon = 0.03;
 constexpr int kMaxSupportedBandLength = 768;
 constexpr size_t kMinFittedItemCount = size_t{1} << 10;

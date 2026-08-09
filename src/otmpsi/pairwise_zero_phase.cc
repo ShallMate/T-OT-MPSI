@@ -53,7 +53,7 @@ volePSI::Matrix<volePSI::u8> MakeGmwInput(const std::vector<uint128_t> &shares,
 }
 
 size_t PeqtBitWidth(const OtmpsiParams &params) {
-  constexpr size_t kDefaultStatisticalSecurity = 40;
+  constexpr size_t kDefaultStatisticalSecurity = 48;
   const size_t security = ParsePositiveEnvSize("OTMPSI_BANDOKVS_SECURITY",
                                                kDefaultStatisticalSecurity);
   const size_t pair_count = std::max<size_t>(1, params.parties - 1);

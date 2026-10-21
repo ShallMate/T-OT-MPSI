@@ -48,6 +48,8 @@ Modes used by this script:
 
 Both default modes share the optimized threshold-comparison path for every
 threshold, including t=1.
+Each party process and all its asynchronous threads are pinned to one CPU.
+Distinct physical cores are preferred; excess parties share cores round-robin.
 
 Options:
   --set-powers LIST       comma list, default: 12,16,20
@@ -59,7 +61,7 @@ Options:
                           also accepts n-1 for a party-dependent threshold
   --output-ratios LIST    exact output ratios, for example: 0,1/4,1
                           default: preserve the demo data distribution
-  --threads N             default: 1
+  --threads N             worker threads, default: 1; CPU limit stays one per party
   --base-port N           default: 19350
   --case-timeout-seconds N
                           per-case timeout; 0 disables it (default: 0)
@@ -465,6 +467,13 @@ run_case_payload() {
 
   mkdir -p "${case_dir}"
   cd "${PROJECT_ROOT}"
+  rm -f "${case_dir}/cpu_affinity.confirmed"
+
+  command -v taskset >/dev/null 2>&1 || die "taskset not found (util-linux is required)"
+  local cpu_list
+  cpu_list="$(python3 "${SCRIPT_DIR}/party_cpu_affinity.py" "${parties}")" || return 1
+  local -a party_cpus
+  mapfile -t party_cpus <<<"${cpu_list}"
 
   local mode_args_string
   mode_args_string="$(mode_args_for "${mode}")"
@@ -486,6 +495,10 @@ run_case_payload() {
 
     export OTMPSI_TRANSPORT="${OTMPSI_TRANSPORT:-tcp}"
     export OTMPSI_PIPELINE_2PC="${OTMPSI_PIPELINE_2PC:-1}"
+    export OMP_NUM_THREADS="${threads}"
+    export OPENBLAS_NUM_THREADS=1
+    unset GOMP_CPU_AFFINITY KMP_AFFINITY OMP_PLACES
+    export OMP_PROC_BIND=false
     export OTMPSI_LOG_ROOT="${case_dir}"
     log "PEQT triple batch size=${OTMPSI_PEQ_TRIPLE_BATCH_SIZE:-32768}"
 
@@ -504,13 +517,16 @@ run_case_payload() {
 
     local pids=()
     local party
+    printf 'party_id\tcpu_id\n' >"${case_dir}/cpu_affinity.tsv"
     for ((party = 0; party < parties; ++party)); do
+      printf '%s\t%s\n' "${party}" "${party_cpus[party]}" >>"${case_dir}/cpu_affinity.tsv"
+      log "party=${party} cpu=${party_cpus[party]} (all threads pinned)"
       (
         set +e
         local party_pid=""
         trap '[[ -z "${party_pid}" ]] || kill -TERM "${party_pid}" 2>/dev/null || true' \
           TERM INT
-        "${BIN}" \
+        taskset --cpu-list "${party_cpus[party]}" "${BIN}" \
           --parties "${parties}" \
           --set-size "${set_size}" \
           --threshold "${threshold}" \
@@ -520,6 +536,7 @@ run_case_payload() {
           "${mode_args[@]}" \
           --party-id "${party}" >"${case_dir}/party_${party}.log" 2>&1 &
         party_pid=$!
+        printf '%s\n' "${party_pid}" >"${case_dir}/party_${party}.pid"
         wait "${party_pid}"
         local party_rc=$?
         trap - TERM INT
@@ -583,6 +600,9 @@ run_case_payload() {
     "${output_ratio}" "${target_output_size}" "${threads}" "${repeat}" \
     "${base_port}" "${wall_time_s}" "${case_dir}"
 
+  if [[ "${status}" == "success" ]]; then
+    printf 'one_cpu_per_party\n' >"${case_dir}/cpu_affinity.confirmed"
+  fi
   [[ "${status}" == "success" ]]
 }
 
@@ -707,6 +727,8 @@ else
 fi
 command -v ip >/dev/null 2>&1 || die "ip command not found"
 command -v tc >/dev/null 2>&1 || die "tc command not found"
+command -v taskset >/dev/null 2>&1 || die "taskset not found (util-linux is required)"
+command -v python3 >/dev/null 2>&1 || die "python3 not found"
 [[ "${CASE_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] ||
   die "--case-timeout-seconds must be a non-negative integer"
 if ((CASE_TIMEOUT_SECONDS > 0)); then
@@ -718,6 +740,7 @@ if [[ -n "${GMW_SIMD}" ]]; then
 fi
 
 if ((DRY_RUN)); then
+  log "cpu_binding=one_cpu_per_party; excess parties share physical cores round-robin"
   log "dry run matrix:"
   for profile in $(split_csv_list "${PROFILES}"); do
     read -r rate rtt_ms profile_label <<<"$(profile_spec "${profile}")"
@@ -777,13 +800,13 @@ for profile in $(split_csv_list "${PROFILES}"); do
 
             if ((SKIP_EXISTING)) && [[ -s "${row_file}" ]]; then
               existing_status="$(result_row_status "${row_file}")"
-              if [[ "${existing_status}" == "success" ]]; then
+              if [[ "${existing_status}" == "success" && -s "${case_dir}/cpu_affinity.tsv" && -s "${case_dir}/cpu_affinity.confirmed" ]]; then
                 log "skip existing: profile=${profile} mode=${mode} N=${parties} m=2^${set_power} output_ratio=${output_ratio} repeat=${repeat}"
                 cat "${row_file}" >>"${RAW_SUMMARY_CSV}"
                 format_protocol_tables
                 continue
               fi
-              log "rerun existing non-success case: status=${existing_status:-unknown} profile=${profile} mode=${mode} N=${parties} m=2^${set_power} output_ratio=${output_ratio} repeat=${repeat}"
+              log "rerun case: status=${existing_status:-unknown}, missing single-CPU binding record or previous failure; profile=${profile} mode=${mode} N=${parties} m=2^${set_power} output_ratio=${output_ratio} repeat=${repeat}"
             fi
 
             log "run profile=${profile} mode=${mode} N=${parties} m=2^${set_power} threshold=${threshold} output_ratio=${output_ratio} target_output_size=${target_output_size:-default} repeat=${repeat}"

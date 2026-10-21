@@ -3,25 +3,28 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 build_dir="${OTMPSI_BUILD_DIR:-${project_root}/build}"
-cmake -S "$project_root" -B "$build_dir" \
-  -DCMAKE_BUILD_TYPE=Release -DOTMPSI_BUILD_TESTS=OFF
-cmake --build "$build_dir" --target otmpsi_demo \
-  -j "${OTMPSI_BUILD_JOBS:-8}"
 
 args=()
 parties=4
 base_port=19350
 single_process=0
 party_mode=0
+party_id=0
+skip_build=0
 
 while (($#)); do
   case "$1" in
+    --skip-build)
+      skip_build=1
+      shift
+      ;;
     --single-process)
       single_process=1
       shift
       ;;
     --party-id)
       party_mode=1
+      party_id="$2"
       args+=("$1" "$2")
       shift 2
       ;;
@@ -46,9 +49,31 @@ while (($#)); do
   esac
 done
 
+if ((skip_build == 0)); then
+  cmake -S "$project_root" -B "$build_dir" \
+    -DCMAKE_BUILD_TYPE=Release -DOTMPSI_BUILD_TESTS=OFF
+  cmake --build "$build_dir" --target otmpsi_demo \
+    -j "${OTMPSI_BUILD_JOBS:-8}"
+fi
+
+command -v taskset >/dev/null 2>&1 || { echo "taskset is required" >&2; exit 1; }
+cpu_list="$(python3 "$project_root/scripts/party_cpu_affinity.py" "$parties")"
+mapfile -t party_cpus <<<"$cpu_list"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+unset GOMP_CPU_AFFINITY KMP_AFFINITY OMP_PLACES
+export OMP_PROC_BIND=false
+
 bin="${OTMPSI_BIN:-${build_dir}/otmpsi_demo}"
-if ((single_process || party_mode)); then
-  exec "$bin" "${args[@]}"
+if ((single_process)); then
+  echo "[cpu-affinity] single-process demo: all parties share CPU ${party_cpus[0]}" >&2
+  exec taskset --cpu-list "${party_cpus[0]}" "$bin" "${args[@]}"
+fi
+if ((party_mode)); then
+  [[ "$party_id" =~ ^[0-9]+$ ]] && ((party_id < parties)) || {
+    echo "--party-id must be in [0, parties)" >&2; exit 1;
+  }
+  exec taskset --cpu-list "${party_cpus[party_id]}" "$bin" "${args[@]}"
 fi
 
 log_root="${OTMPSI_LOG_ROOT:-${HOME}/otmpsi_runs}"
@@ -62,9 +87,12 @@ port_map_dir="$log_dir/port_map"
 export OTMPSI_PORT_MAP_DIR="$port_map_dir"
 
 pids=()
+printf 'party_id\tcpu_id\n' >"$log_dir/cpu_affinity.tsv"
 for ((party = 0; party < parties; ++party)); do
-  "$bin" "${args[@]}" --party-id "$party" >"$log_dir/party_${party}.log" 2>&1 &
+  printf '%s\t%s\n' "$party" "${party_cpus[party]}" >>"$log_dir/cpu_affinity.tsv"
+  taskset --cpu-list "${party_cpus[party]}" "$bin" "${args[@]}" --party-id "$party" >"$log_dir/party_${party}.log" 2>&1 &
   pids+=("$!")
+  printf '%s\n' "${pids[-1]}" >"$log_dir/party_${party}.pid"
 done
 
 status=0

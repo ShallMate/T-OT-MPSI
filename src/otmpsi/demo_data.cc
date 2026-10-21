@@ -81,10 +81,23 @@ void CheckDemoResults(const std::vector<OtmpsiResult> &actual,
   OTMPSI_ENFORCE(actual.size() == expected.size(),
                "OT-MPSI output size mismatch: actual={} expected={}",
                actual.size(), expected.size());
+  // Protocol rows follow a fresh private permutation, while the reference
+  // uses the original dataset. Compare the complete output tuples as a set.
+  std::vector<const OtmpsiResult *> actual_by_item(actual.size());
+  std::vector<const OtmpsiResult *> expected_by_item(expected.size());
   for (size_t i = 0; i < actual.size(); ++i) {
-    OTMPSI_ENFORCE(actual[i].item == expected[i].item &&
-                     actual[i].count == expected[i].count &&
-                     actual[i].holders == expected[i].holders,
+    actual_by_item[i] = &actual[i];
+    expected_by_item[i] = &expected[i];
+  }
+  const auto by_item = [](const OtmpsiResult *a, const OtmpsiResult *b) {
+    return a->item < b->item;
+  };
+  std::sort(actual_by_item.begin(), actual_by_item.end(), by_item);
+  std::sort(expected_by_item.begin(), expected_by_item.end(), by_item);
+  for (size_t i = 0; i < actual.size(); ++i) {
+    OTMPSI_ENFORCE(actual_by_item[i]->item == expected_by_item[i]->item &&
+                     actual_by_item[i]->count == expected_by_item[i]->count &&
+                     actual_by_item[i]->holders == expected_by_item[i]->holders,
                  "OT-MPSI output mismatch at row {}", i);
   }
 }

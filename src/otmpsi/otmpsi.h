@@ -2,6 +2,7 @@
 
 #include "otmpsi/otmpsi_types.h"
 #include "otmpsi/otmpsi_ports.h"
+#include "otmpsi/input_preparation.h"
 #include "otmpsi/ssbsmt_phase.h"
 #include "otmpsi/pairwise_zero_phase.h"
 #include "otmpsi/private_selector_ot.h"

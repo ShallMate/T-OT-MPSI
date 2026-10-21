@@ -6,6 +6,20 @@ find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(OpenSSL REQUIRED)
 
+# Official BLAKE3 C implementation (1.8.2), including runtime SIMD dispatch.
+if(NOT TARGET BLAKE3::blake3)
+  set(BLAKE3_TESTING OFF)
+  set(BLAKE3_EXAMPLES OFF)
+  FetchContent_Declare(
+    otmpsi_blake3
+    GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
+    GIT_TAG df610ddc3b93841ffc59a87e3da659a15910eb46
+    GIT_SHALLOW FALSE
+    SOURCE_SUBDIR c
+  )
+  FetchContent_MakeAvailable(otmpsi_blake3)
+endif()
+
 # These revisions are intentionally pinned. They match the APIs used by the
 # protocol sources and make a clean build reproducible.
 set(LIBOTE_STD_VER 20 CACHE STRING "" FORCE)

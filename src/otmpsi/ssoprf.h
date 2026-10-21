@@ -97,6 +97,7 @@ inline AltModPrf::KeyType ExpandKey512FromSeed(uint128_t seed) {
   return key;
 }
 
+// Low-level F evaluation: SS-BSMT supplies H(x), not the raw set element.
 inline std::vector<uint128_t> EvalAltModPrf(const AltModPrf::KeyType &key,
                                             const std::vector<uint128_t> &xs) {
   static_assert(sizeof(block) == sizeof(uint128_t));
@@ -125,6 +126,7 @@ struct SsoprfResult {
   size_t bytes = 0;
 };
 
+// The receiver input is already in the PRF domain (H(x) for SS-BSMT).
 inline size_t RunSsoprfReceiverRoleSingleInto(
     const uint128_t *xs, size_t input_size, uint128_t *out_share,
     coproto::Socket sock, const std::string &tag, size_t num_threads = 1) {

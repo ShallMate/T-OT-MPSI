@@ -15,6 +15,7 @@ set(
   src/otmpsi/final_reveal_phase.cc
   src/otmpsi/gmw_circuits.cc
   src/otmpsi/gmw_inputs.cc
+  src/otmpsi/input_preparation.cc
   src/otmpsi/nparty_gmw.cc
   src/otmpsi/otmpsi_ports.cc
   src/otmpsi/otmpsi_runner.cc
@@ -48,6 +49,7 @@ target_link_libraries(
   PUBLIC
     oc::libOTe
     secureJoin
+    BLAKE3::blake3
     OpenMP::OpenMP_CXX
     Threads::Threads
     OpenSSL::SSL

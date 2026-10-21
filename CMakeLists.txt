@@ -44,6 +44,21 @@ if(OTMPSI_BUILD_TESTS)
   add_executable(public_t_compare_smoke tests/public_t_compare_smoke.cc)
   target_link_libraries(public_t_compare_smoke PRIVATE otmpsi::otmpsi)
   add_test(NAME public_t_compare_smoke COMMAND public_t_compare_smoke)
+
+  add_executable(input_preparation_test tests/input_preparation_test.cc)
+  target_link_libraries(input_preparation_test PRIVATE otmpsi::otmpsi)
+  add_test(NAME input_preparation_test COMMAND input_preparation_test)
+
+  if(OTMPSI_BUILD_APPS)
+    foreach(output_mode IN ITEMS leader_only client_output_basis)
+      add_test(
+        NAME hashed_permuted_${output_mode}
+        COMMAND otmpsi_demo --parties 3 --set-size 1024 --threshold 3
+                --target-output-size 17 --threads 2
+                --final-output ${output_mode}
+      )
+    endforeach()
+  endif()
 endif()
 
 install(

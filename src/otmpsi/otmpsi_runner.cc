@@ -1,6 +1,7 @@
 #include "otmpsi/otmpsi_runner.h"
 
 #include "otmpsi/band_okvs_params.h"
+#include "otmpsi/input_preparation.h"
 #include "otmpsi/public_t_compare.h"
 
 namespace examples::otmpsi {
@@ -59,13 +60,21 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
                "one-process-per-party mode currently supports the main route: "
                "optimized standard output or relaxed output");
 
-  const auto x0 = BuildLeaderSet(params.set_size);
+  const auto original_x0 = BuildLeaderSet(params.set_size);
+  auto x0 = original_x0;
   OtmpsiStats stats;
   stats.client_ssbsmt.resize(params.parties);
   stats.client_zero.resize(params.parties);
   stats.client_b2a.resize(params.parties);
   stats.client_nparty_gmw.resize(params.parties);
   const auto protocol_start = std::chrono::steady_clock::now();
+  std::vector<uint128_t> hashed_x0;
+  double input_preparation_s = 0.0;
+  if (party_id == 0) {
+    PrivatelyPermuteLeaderInput(x0);
+    hashed_x0 = HashSsBsmtInputs(x0);
+    input_preparation_s = SecondsSince(protocol_start);
+  }
 
   std::vector<std::vector<uint128_t>> leader_shares(params.parties - 1);
   std::vector<std::vector<uint128_t>> leader_bit_shares(params.parties - 1);
@@ -99,7 +108,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
     for (size_t party = 1; party < params.parties; ++party) {
       jobs[party] = std::async(std::launch::async, [&, party] {
         LeaderTwoPartyPipelineOutput out;
-        auto ssbsmt = SsBsmtLeader(x0, party, params);
+        auto ssbsmt = SsBsmtLeaderHashed(hashed_x0, party, params);
         out.ssbsmt = ssbsmt.stats;
         out.share = std::move(ssbsmt.share);
 
@@ -147,7 +156,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
       std::vector<std::future<ShareWithStats>> jobs(params.parties);
       for (size_t party = 1; party < params.parties; ++party) {
         jobs[party] = std::async(std::launch::async, [&, party] {
-          return SsBsmtLeader(x0, party, params);
+          return SsBsmtLeaderHashed(hashed_x0, party, params);
         });
       }
       for (size_t party = 1; party < params.parties; ++party) {
@@ -158,7 +167,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
       stats.ssbsmt.leader.time_s = SecondsSince(ssbsmt_start);
     } else {
       const uint128_t key_seed = BlockToU128(osuCrypto::sysRandomSeed());
-      auto set = BuildPartySet(party_id, params, x0);
+      auto set = BuildPartySet(party_id, params, original_x0);
       auto out = SsBsmtParty(set, x0.size(), party_id, key_seed, params);
       party_share = std::move(out.share);
       stats.client_ssbsmt[party_id] = out.stats;
@@ -225,6 +234,9 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
                                    " B2A skipped for boolean output");
     }
   }
+
+  stats.ssbsmt.leader.time_s += input_preparation_s;
+  stats.ssbsmt.time_s += input_preparation_s;
 
   LogDebug("multiprocess",
            "party=" + std::to_string(party_id) + " output phase begin");
@@ -315,7 +327,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
         stats.ssbsmt.leader.comm_bytes + stats.pairwise_zero.leader.comm_bytes +
         stats.b2a.leader.comm_bytes + stats.nparty_gmw.leader.comm_bytes;
     stats.leader.time_s = done_s;
-    CheckDemoResults(final_results, ExpectedDemoResults(params, x0));
+    CheckDemoResults(final_results, ExpectedDemoResults(params, original_x0));
   } else {
     stats.clients.comm_bytes = stats.ssbsmt.clients.comm_bytes +
                                stats.pairwise_zero.clients.comm_bytes +
@@ -336,13 +348,17 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
       params.final_output_mode == FinalOutputMode::kClientOutputBasis;
   const bool needs_b2a = params.enable_b2a && !threshold_two_relaxed_fast;
 
-  const auto x0 = BuildLeaderSet(params.set_size);
+  const auto original_x0 = BuildLeaderSet(params.set_size);
+  auto x0 = original_x0;
   std::vector<std::vector<uint128_t>> party_sets(params.parties);
   for (size_t party_idx = 1; party_idx < params.parties; ++party_idx) {
-    party_sets[party_idx] = BuildPartySet(party_idx, params, x0);
+    party_sets[party_idx] = BuildPartySet(party_idx, params, original_x0);
   }
 
   const auto protocol_start = std::chrono::steady_clock::now();
+  PrivatelyPermuteLeaderInput(x0);
+  const auto hashed_x0 = HashSsBsmtInputs(x0);
+  const double input_preparation_s = SecondsSince(protocol_start);
   std::future<TreeX2aWithGmwPrefixRun> tree_mask_prep_job;
   if (tree_x2a) {
     const size_t correlations_per_pair = TreeGmwCorrelationsPerPair(params);
@@ -377,7 +393,7 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
                              key_seed, params);
         });
     leader_jobs[party_idx] = std::async(std::launch::async, [&, party_idx] {
-      return SsBsmtLeader(x0, party_idx, params);
+      return SsBsmtLeaderHashed(hashed_x0, party_idx, params);
     });
   }
 
@@ -393,6 +409,8 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   stats.ssbsmt.time_s = SecondsSince(ssbsmt_start);
   stats.ssbsmt.leader.time_s = stats.ssbsmt.time_s;
   stats.ssbsmt.clients.time_s = stats.ssbsmt.time_s;
+  stats.ssbsmt.time_s += input_preparation_s;
+  stats.ssbsmt.leader.time_s += input_preparation_s;
   LogDebug("stage",
            "SS-BSMT done time_s=" + std::to_string(stats.ssbsmt.time_s));
 
@@ -581,7 +599,7 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   stats.total_time_s = done_s;
 
   auto out = std::move(gmw_results);
-  CheckDemoResults(out, ExpectedDemoResults(params, x0));
+  CheckDemoResults(out, ExpectedDemoResults(params, original_x0));
   return {std::move(out), std::move(stats)};
 }
 

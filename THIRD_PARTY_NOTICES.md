@@ -9,6 +9,7 @@ by their respective licenses and notices:
 - [coproto](https://github.com/Visa-Research/coproto)
 - [macoro](https://github.com/Visa-Research/macoro)
 - [secure-join](https://github.com/ladnir/secure-join)
+- [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) (CC0-1.0 or Apache-2.0)
 - [libsodium](https://github.com/jedisct1/libsodium)
 - [Boost](https://www.boost.org/)
 - [libdivide](https://github.com/ridiculousfish/libdivide)

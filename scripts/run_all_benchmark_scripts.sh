@@ -8,8 +8,6 @@ ONLY="relax_standard,n_sweep_t1_2p14,n10_t5,n10_threshold_sweep,output_size_impa
 CONTINUE_ON_ERROR=0
 SKIP_BUILD=0
 DRY_RUN=0
-PAPER_FAITHFUL=0
-ENABLE_T2_FAST_PATH=0
 FORWARD_ARGS=()
 
 usage() {
@@ -49,7 +47,7 @@ Options handled by this wrapper:
 Default protocol setting:
   relaxed and standard share Tree-X2A + combined Silent-OT + 6-AND comparison.
   relaxed opens the selection and skips unselected rows; standard uses private
-  selector OT. --paper-faithful and --enable-t2-fast-path affect relaxed only.
+  selector OT.
 
 Common runner options are forwarded to each benchmark script, for example:
   --profiles lan
@@ -60,8 +58,6 @@ Common runner options are forwarded to each benchmark script, for example:
   --case-timeout-seconds N
   --peq-triple-batch-size N
   --gmw-simd avx2
-  --paper-faithful
-  --enable-t2-fast-path
   --rerun-existing
   --stop-on-error
   --no-unshare
@@ -207,16 +203,6 @@ while (($#)); do
       FORWARD_ARGS+=("$1")
       shift
       ;;
-    --paper-faithful)
-      PAPER_FAITHFUL=1
-      FORWARD_ARGS+=("$1")
-      shift
-      ;;
-    --enable-t2-fast-path)
-      ENABLE_T2_FAST_PATH=1
-      FORWARD_ARGS+=("$1")
-      shift
-      ;;
     -h | --help)
       usage
       exit 0
@@ -228,12 +214,6 @@ while (($#)); do
   esac
 done
 
-if ((PAPER_FAITHFUL == 0 && ENABLE_T2_FAST_PATH == 0)); then
-  unset OTMPSI_DISABLE_RELAXED_BOOLEAN_GMW
-  unset OTMPSI_DISABLE_T2_RELAXED_FAST
-  unset OTMPSI_ENABLE_T2_FAST
-  unset OTMPSI_ENABLE_T2_RELAXED_FAST
-fi
 
 BENCH_IDS=(
   relax_standard
@@ -276,13 +256,7 @@ fi
 
 log "log_root=${LOG_ROOT}"
 log "selected=${ONLY}"
-if ((PAPER_FAITHFUL)); then
-  log "protocol_default=standard_tree_x2a_relaxed_paper"
-elif ((ENABLE_T2_FAST_PATH)); then
-  log "protocol_default=standard_tree_x2a_relaxed_t2_fast"
-else
-  log "protocol_default=standard_tree_x2a"
-fi
+log "protocol_default=paper_tree_x2a"
 
 run_index=0
 failures=0

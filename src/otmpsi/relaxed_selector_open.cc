@@ -129,6 +129,7 @@ RelaxedSelectorOpenPartyRun RunRelaxedSelectorOpenParty(
     }
 
     const auto selected = SelectedRows(packed_selection, params.set_size);
+    run.output_size = selected.size();
     const size_t membership_bytes = (selected.size() + 7U) / 8U;
     std::vector<std::vector<uint8_t>> party_membership(params.parties);
     std::vector<std::future<size_t>> reveal_jobs(params.parties);
@@ -166,6 +167,7 @@ RelaxedSelectorOpenPartyRun RunRelaxedSelectorOpenParty(
     macoro::sync_wait(socket.recv(coproto::span<uint8_t>(
         packed_selection.data(), packed_selection.size())));
     const auto selected = SelectedRows(packed_selection, params.set_size);
+    run.output_size = selected.size();
     auto packed_membership = PackSelectedMembership(
         party_membership_share, selected, params.set_size);
     if (!packed_membership.empty()) {

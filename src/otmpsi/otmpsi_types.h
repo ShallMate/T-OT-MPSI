@@ -51,18 +51,12 @@ enum class B2aBackend {
   kSilentOt,
 };
 
-enum class FinalMaskBackend {
-  kBooleanGmw,
-  kArithmetic,
-};
-
 enum class FinalOutputMode {
   kLeaderOnly,
   kClientOutputBasis,
 };
 
 std::string_view B2aBackendName(B2aBackend backend);
-std::string_view FinalMaskBackendName(FinalMaskBackend backend);
 std::string_view FinalOutputModeName(FinalOutputMode mode);
 
 struct OtmpsiParams {
@@ -72,14 +66,9 @@ struct OtmpsiParams {
   std::optional<size_t> target_output_size;
   size_t threads = 1;
   uint16_t base_port = 19350;
-  bool enable_b2a = true;
   B2aBackend b2a_backend = B2aBackend::kSilentOt;
-  FinalMaskBackend final_mask_backend = FinalMaskBackend::kArithmetic;
   FinalOutputMode final_output_mode = FinalOutputMode::kLeaderOnly;
 };
-
-bool UsesThresholdTwoRelaxedFastPath(const OtmpsiParams &params);
-bool UsesTreeX2aRoute(const OtmpsiParams &params);
 
 struct OtmpsiResult {
   uint128_t item = 0;
@@ -122,64 +111,8 @@ struct OtmpsiStats {
 struct OtmpsiRun {
   std::vector<OtmpsiResult> results;
   OtmpsiStats stats;
-};
-
-struct PaperGmwLayout {
-  size_t parties = 0;
-  size_t rho_bits = 128;
-  size_t count_bits = 0;
-  size_t one_offset = 0;
-  size_t threshold_offset = 0;
-  size_t zero_offset = 0;
-  size_t input_bits = 0;
-  size_t output_bits = 0;
-};
-
-struct MembershipGmwLayout {
-  size_t parties = 0;
-  size_t count_bits = 0;
-  size_t membership_offset = 0;
-  size_t one_offset = 0;
-  size_t threshold_offset = 0;
-  size_t zero_offset = 0;
-  size_t input_bits = 0;
-  size_t output_bits = 0;
-};
-
-struct ArithmeticCountGmwLayout {
-  size_t parties = 0;
-  size_t count_bits = 0;
-  size_t count_share_offset = 0;
-  size_t membership_offset = 0;
-  size_t one_offset = 0;
-  size_t threshold_offset = 0;
-  size_t zero_offset = 0;
-  size_t input_bits = 0;
-  size_t output_bits = 0;
-};
-
-struct MaskedCountGmwLayout {
-  size_t parties = 0;
-  size_t count_bits = 0;
-  size_t compare_bits = 0;
-  size_t mask_bit_offset = 0;
-  size_t opened_mask_offset = 0;
-  size_t membership_offset = 0;
-  size_t one_offset = 0;
-  size_t threshold_offset = 0;
-  size_t zero_offset = 0;
-  size_t input_bits = 0;
-  size_t output_bits = 0;
-};
-
-struct AdditiveMaskedCompareLayout {
-  size_t parties = 0;
-  size_t compare_bits = 0;
-  size_t opened_mask_offset = 0;
-  size_t random_share_offset = 0;
-  size_t one_offset = 0;
-  size_t zero_offset = 0;
-  size_t input_bits = 0;
+  // Relaxed clients receive s; standard clients receive no output.
+  std::optional<size_t> client_output_size;
 };
 
 struct MaskedCountCompareData {
@@ -201,13 +134,7 @@ std::string HexU128(uint128_t v);
 void LogDebug(const std::string &scope, const std::string &msg);
 bool EnvEnabled(const char *name);
 double SecondsSince(std::chrono::steady_clock::time_point start);
-size_t BitsForPartyCount(size_t parties);
 size_t CompareBitsForPartyCount(size_t parties);
 uint64_t LowBitsMask(size_t bits);
-PaperGmwLayout MakePaperGmwLayout(size_t parties);
-MembershipGmwLayout MakeMembershipGmwLayout(size_t parties);
-ArithmeticCountGmwLayout MakeArithmeticCountGmwLayout(size_t parties);
-MaskedCountGmwLayout MakeMaskedCountGmwLayout(size_t parties);
-AdditiveMaskedCompareLayout MakeAdditiveMaskedCompareLayout(size_t parties);
 
 }

@@ -49,6 +49,14 @@ if(OTMPSI_BUILD_TESTS)
   target_link_libraries(input_preparation_test PRIVATE otmpsi::otmpsi)
   add_test(NAME input_preparation_test COMMAND input_preparation_test)
 
+  add_executable(band_okvs_codec_test tests/band_okvs_codec_test.cc)
+  target_link_libraries(band_okvs_codec_test PRIVATE otmpsi::otmpsi)
+  add_test(NAME band_okvs_codec_test COMMAND band_okvs_codec_test)
+  set_tests_properties(band_okvs_codec_test PROPERTIES TIMEOUT 15)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(band_okvs_codec_test PRIVATE -maes -mavx2 -mavx512f -mbmi2)
+  endif()
+
   if(OTMPSI_BUILD_APPS)
     foreach(output_mode IN ITEMS leader_only client_output_basis)
       add_test(

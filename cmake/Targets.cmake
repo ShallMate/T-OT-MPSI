@@ -6,6 +6,7 @@ set(
   src/otmpsi/GMW/Gmw.cpp
   src/otmpsi/GMW/SilentTripleGen.cpp
   src/otmpsi/b2a_phase.cc
+  src/otmpsi/band_okvs_codec.cc
   src/otmpsi/band_okvs_params.cc
   src/otmpsi/bandokvs/band.cc
   src/otmpsi/bandokvs/band_okvs.cc
@@ -13,7 +14,6 @@ set(
   src/otmpsi/compat/parallel.cc
   src/otmpsi/demo_data.cc
   src/otmpsi/final_reveal_phase.cc
-  src/otmpsi/gmw_circuits.cc
   src/otmpsi/gmw_inputs.cc
   src/otmpsi/input_preparation.cc
   src/otmpsi/nparty_gmw.cc

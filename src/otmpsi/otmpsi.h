@@ -10,7 +10,6 @@
 #include "otmpsi/b2a_phase.h"
 #include "otmpsi/tree_x2a_eda_bit.h"
 #include "otmpsi/gmw_inputs.h"
-#include "otmpsi/gmw_circuits.h"
 #include "otmpsi/nparty_gmw.h"
 #include "otmpsi/final_reveal_phase.h"
 #include "otmpsi/demo_data.h"

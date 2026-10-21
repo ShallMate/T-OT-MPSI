@@ -116,7 +116,8 @@ void CheckLargeNPortTags() {
   params.parties = 127;
   const auto tags = ProtocolSocketTags(params);
   const size_t pairs = params.parties * (params.parties - 1) / 2;
-  const size_t expected = 11 * (params.parties - 1) + 5 * pairs;
+  // SS-OPRF, OKVS, PEQT, B2A, masked opening and output; four pair channels.
+  const size_t expected = 6 * (params.parties - 1) + 4 * pairs;
   OTMPSI_ENFORCE(tags.size() == expected,
                "Tree-X2A port-tag count mismatch: actual={} expected={}",
                tags.size(), expected);

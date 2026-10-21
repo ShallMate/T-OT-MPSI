@@ -5,38 +5,28 @@ namespace examples::otmpsi {
 std::vector<std::string> ProtocolSocketTags(const OtmpsiParams &params) {
   std::vector<std::string> tags;
   for (size_t party = 1; party < params.parties; ++party) {
-    const size_t ssoprf_shards =
+    const size_t shards =
         std::min(params.set_size, std::max<size_t>(1, params.threads));
     const auto ssoprf_tag = MakeSocketTag(params.base_port, party, 0);
-    if (ssoprf_shards <= 1) {
+    if (shards <= 1) {
       tags.push_back(ssoprf_tag);
     } else {
-      for (size_t shard = 0; shard < ssoprf_shards; ++shard) {
+      for (size_t shard = 0; shard < shards; ++shard) {
         tags.push_back(ssoprf_tag + "/shard/" + std::to_string(shard));
       }
     }
-    for (size_t channel :
-         {1UL, 2UL, 3UL, 4UL, 9UL, 10UL, 11UL, 12UL, 13UL}) {
+    for (size_t channel : {1UL, 2UL, 3UL, 4UL}) {
       tags.push_back(MakeSocketTag(params.base_port, party, channel));
     }
-    if (UsesTreeX2aRoute(params)) {
-      const size_t output_channel =
-          params.final_output_mode == FinalOutputMode::kLeaderOnly ? 16 : 18;
-      tags.push_back(MakeSocketTag(params.base_port, party, output_channel));
-    }
+    const size_t output_channel =
+        params.final_output_mode == FinalOutputMode::kLeaderOnly ? 16 : 18;
+    tags.push_back(MakeSocketTag(params.base_port, party, output_channel));
   }
-
   size_t pair_id = 0;
   for (size_t i = 0; i < params.parties; ++i) {
     for (size_t j = i + 1; j < params.parties; ++j) {
-      tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 7));
-      tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 8));
-      if (UsesTreeX2aRoute(params)) {
-        tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 14));
-        tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 15));
-        if (params.final_output_mode == FinalOutputMode::kLeaderOnly) {
-          tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, 17));
-        }
+      for (size_t channel : {7UL, 8UL, 14UL, 15UL}) {
+        tags.push_back(MakeSocketTag(params.base_port, 1000 + pair_id, channel));
       }
       ++pair_id;
     }

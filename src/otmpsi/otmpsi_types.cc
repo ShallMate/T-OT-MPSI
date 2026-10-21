@@ -25,16 +25,6 @@ std::string_view B2aBackendName(B2aBackend backend) {
   return "unknown";
 }
 
-std::string_view FinalMaskBackendName(FinalMaskBackend backend) {
-  switch (backend) {
-  case FinalMaskBackend::kBooleanGmw:
-    return "boolean_gmw";
-  case FinalMaskBackend::kArithmetic:
-    return "arithmetic";
-  }
-  return "unknown";
-}
-
 std::string_view FinalOutputModeName(FinalOutputMode mode) {
   switch (mode) {
   case FinalOutputMode::kLeaderOnly:
@@ -89,35 +79,9 @@ bool EnvEnabled(const char *name) {
   return false;
 }
 
-bool UsesThresholdTwoRelaxedFastPath(const OtmpsiParams &params) {
-  return params.threshold == 2 &&
-         params.final_output_mode == FinalOutputMode::kClientOutputBasis &&
-         !EnvEnabled("OTMPSI_DISABLE_T2_RELAXED_FAST") &&
-         (EnvEnabled("OTMPSI_ENABLE_T2_FAST") ||
-          EnvEnabled("OTMPSI_ENABLE_T2_RELAXED_FAST"));
-}
-
-bool UsesTreeX2aRoute(const OtmpsiParams &params) {
-  if (params.final_output_mode == FinalOutputMode::kLeaderOnly) {
-    return true;
-  }
-  return !UsesThresholdTwoRelaxedFastPath(params) &&
-         !EnvEnabled("OTMPSI_DISABLE_RELAXED_BOOLEAN_GMW");
-}
-
 double SecondsSince(std::chrono::steady_clock::time_point start) {
   return std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
       .count();
-}
-
-size_t BitsForPartyCount(size_t parties) {
-  size_t bits = 0;
-  size_t cap = 1;
-  while (cap <= parties) {
-    cap <<= 1;
-    ++bits;
-  }
-  return std::max<size_t>(1, bits);
 }
 
 size_t CompareBitsForPartyCount(size_t parties) {
@@ -131,72 +95,4 @@ uint64_t LowBitsMask(size_t bits) {
   return (uint64_t{1} << bits) - 1;
 }
 
-PaperGmwLayout MakePaperGmwLayout(size_t parties) {
-  PaperGmwLayout layout;
-  layout.parties = parties;
-  layout.count_bits = BitsForPartyCount(parties);
-  layout.one_offset = (parties - 1) * layout.rho_bits;
-  layout.threshold_offset = layout.one_offset + 1;
-  layout.zero_offset = layout.threshold_offset + layout.count_bits;
-  layout.input_bits = layout.zero_offset + 1;
-  layout.output_bits = 1 + layout.count_bits + parties;
-  return layout;
-}
-
-MembershipGmwLayout MakeMembershipGmwLayout(size_t parties) {
-  MembershipGmwLayout layout;
-  layout.parties = parties;
-  layout.count_bits = BitsForPartyCount(parties);
-  layout.membership_offset = 0;
-  layout.one_offset = parties - 1;
-  layout.threshold_offset = layout.one_offset + 1;
-  layout.zero_offset = layout.threshold_offset + layout.count_bits;
-  layout.input_bits = layout.zero_offset + 1;
-  layout.output_bits = 1 + layout.count_bits + parties;
-  return layout;
-}
-
-ArithmeticCountGmwLayout MakeArithmeticCountGmwLayout(size_t parties) {
-  ArithmeticCountGmwLayout layout;
-  layout.parties = parties;
-  layout.count_bits = BitsForPartyCount(parties);
-  layout.count_share_offset = 0;
-  layout.membership_offset = parties * layout.count_bits;
-  layout.one_offset = layout.membership_offset + parties - 1;
-  layout.threshold_offset = layout.one_offset + 1;
-  layout.zero_offset = layout.threshold_offset + layout.count_bits;
-  layout.input_bits = layout.zero_offset + 1;
-  layout.output_bits = 1 + layout.count_bits + parties;
-  return layout;
-}
-
-MaskedCountGmwLayout MakeMaskedCountGmwLayout(size_t parties) {
-  MaskedCountGmwLayout layout;
-  layout.parties = parties;
-  layout.count_bits = BitsForPartyCount(parties);
-  layout.compare_bits = CompareBitsForPartyCount(parties);
-  layout.mask_bit_offset = 0;
-  layout.opened_mask_offset = layout.mask_bit_offset + layout.compare_bits;
-  layout.membership_offset = layout.opened_mask_offset + layout.compare_bits;
-  layout.one_offset = layout.membership_offset + parties - 1;
-  layout.threshold_offset = layout.one_offset + 1;
-  layout.zero_offset = layout.threshold_offset + layout.compare_bits;
-  layout.input_bits = layout.zero_offset + 1;
-  layout.output_bits = 1 + layout.count_bits + parties;
-  return layout;
-}
-
-AdditiveMaskedCompareLayout MakeAdditiveMaskedCompareLayout(size_t parties) {
-  AdditiveMaskedCompareLayout layout;
-  layout.parties = parties;
-  layout.compare_bits = CompareBitsForPartyCount(parties);
-  layout.opened_mask_offset = 0;
-  layout.random_share_offset = layout.opened_mask_offset + layout.compare_bits;
-  layout.one_offset =
-      layout.random_share_offset + parties * layout.compare_bits;
-  layout.zero_offset = layout.one_offset + 1;
-  layout.input_bits = layout.zero_offset + 1;
-  return layout;
-}
-
-}
+} // namespace examples::otmpsi

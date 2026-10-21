@@ -109,7 +109,7 @@ inline uint<6> CreateBand(oc::span<oc::block> blocks, __uint128_t high_mask) {
 
 template <typename T>
 inline void GenBands(int n, const oc::block* keys, int okvs_length,
-                     int band_length, Band<T>* out) {
+                     int band_length, Band<T>* out, oc::block hash_seed) {
   int num_blocks = (band_length + 127) / 128;
   std::vector<oc::block> expanded_keys(num_blocks);
   std::vector<oc::block> blocks(num_blocks);
@@ -124,7 +124,7 @@ inline void GenBands(int n, const oc::block* keys, int okvs_length,
           : (static_cast<__uint128_t>(1) << (band_length % 128)) - 1;
   uint32_t divisor = okvs_length - band_length + 1;
 
-  oc::AES aes(oc::ZeroBlock);
+  oc::AES aes(hash_seed);
 #pragma GCC unroll 8
   for (int i = 0; i < n; ++i) {
     oc::block block = aes.hashBlock(keys[i]);
@@ -144,7 +144,7 @@ inline void GenBands(int n, const oc::block* keys, int okvs_length,
 template <typename T, typename V>
 inline void GenBandsAndValues(int n, const oc::block* keys, const V* values,
                               int okvs_length, int band_length,
-                              BandAndValue<T, V>* out) {
+                              BandAndValue<T, V>* out, oc::block hash_seed) {
   int num_blocks = (band_length + 127) / 128;
   std::vector<oc::block> expanded_keys(num_blocks);
   std::vector<oc::block> blocks(num_blocks);
@@ -158,7 +158,7 @@ inline void GenBandsAndValues(int n, const oc::block* keys, const V* values,
           ? static_cast<__uint128_t>(-1)
           : (static_cast<__uint128_t>(1) << (band_length % 128)) - 1;
   uint32_t divisor = okvs_length - band_length + 1;
-  oc::AES aes(oc::ZeroBlock);
+  oc::AES aes(hash_seed);
 #pragma GCC unroll 16
   for (int i = 0; i < n; ++i) {
     oc::block block = aes.hashBlock(keys[i]);
@@ -188,11 +188,13 @@ void GenRandomValuesBlocks(oc::span<oc::block> out, uint64_t seed1 = 0,
 class BandOkvs {
  public:
   void Init(int n, int m, int band_length,
-            oc::block prng_seed = oc::ZeroBlock) {
+            oc::block prng_seed = oc::ZeroBlock,
+            oc::block hash_seed = oc::ZeroBlock) {
     num_eqns_ = n;
     num_vars_ = m;
     band_length_ = band_length;
     prng_seed_ = prng_seed;
+    hash_seed_ = hash_seed;
   }
 
   // Add additional space
@@ -252,13 +254,15 @@ class BandOkvs {
       while (reduced_matrix[offset] != 0) {
         raw_band ^= reduced_matrix[offset];
         value ^= reduced_values[offset];
+        // A dependent row is an encoding failure, even when its RHS is zero.
+        // Check before shifting: shifting an all-zero row never finds a pivot.
+        if (raw_band == 0) {
+          return false;
+        }
         while ((raw_band & 1) == 0) {
           raw_band >>= 1;
           ++offset;
         }
-      }
-      if (raw_band == 0) {
-        continue;
       }
       reduced_matrix[offset] = raw_band;
       reduced_values[offset] = value;
@@ -319,7 +323,8 @@ class BandOkvs {
         (BandAndValue<T, V>*)malloc(n * sizeof(BandAndValue<T, V>));
     {
       ScopedTimer stage("Encode::GenBandsAndValues");
-      GenBandsAndValues<T, V>(n, keys, values, num_vars_, band_length_, bands);
+      GenBandsAndValues<T, V>(n, keys, values, num_vars_, band_length_, bands,
+                              hash_seed_);
     }
     {
       ScopedTimer stage("Encode::Sort");
@@ -334,6 +339,7 @@ class BandOkvs {
     }
     DebugLog(std::string("Encode finished: encoded=") +
              (encoded ? "true" : "false"));
+    free(bands);
     return encoded;
   }
 
@@ -359,7 +365,7 @@ class BandOkvs {
     Band<T>* bands = (Band<T>*)malloc(n * sizeof(Band<T>));
     {
       ScopedTimer stage("Decode::GenBands");
-      GenBands<T>(n, keys, num_vars_, band_length_, bands);
+      GenBands<T>(n, keys, num_vars_, band_length_, bands, hash_seed_);
     }
     {
       ScopedTimer stage("Decode::Sort");
@@ -371,6 +377,7 @@ class BandOkvs {
       DecodeHelper(bands, okvs, out);
     }
     DebugLog("Decode finished");
+    free(bands);
   }
 
   inline static constexpr __mmask8 table_[16] = {
@@ -430,6 +437,7 @@ class BandOkvs {
   int num_vars_ = 0;
   int band_length_ = 0;
   oc::block prng_seed_;
+  oc::block hash_seed_;
 };
 
 }  // namespace band_okvs

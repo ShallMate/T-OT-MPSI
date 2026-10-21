@@ -9,8 +9,6 @@ int main() {
   params.threshold = 2;
   params.threads = 2;
   params.base_port = 28400;
-  params.final_mask_backend =
-      examples::otmpsi::FinalMaskBackend::kArithmetic;
   params.final_output_mode =
       examples::otmpsi::FinalOutputMode::kClientOutputBasis;
 

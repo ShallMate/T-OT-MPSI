@@ -25,8 +25,6 @@ SKIP_BUILD=0
 SKIP_EXISTING=1
 STOP_ON_ERROR=0
 DRY_RUN=0
-PAPER_FAITHFUL=0
-ENABLE_T2_FAST_PATH=0
 GMW_SIMD="${OTMPSI_GMW_SIMD:-}"
 
 usage() {
@@ -41,18 +39,15 @@ Benchmarks OT-MPSI relaxed and standard modes for:
              100Mbps/40ms RTT, 50Mbps/40ms RTT
 
 Modes used by this script:
-  relaxed  -> --b2a --final-mask arithmetic --final-output client_output_basis
+  relaxed  -> --final-output client_output_basis
               Default implementation: Tree-X2A + combined Silent-OT + 6-AND
               comparison, then open o_i and reveal only selected rows.
-              Paper-faithful implementation: open o_i to all parties;
-              non-receivers learn s=sum(o_i); selected rows reveal arithmetic
-              membership shares.
-  standard -> --b2a --final-mask arithmetic --final-output leader_only
+  standard -> --final-output leader_only
               Always uses the optimized Tree-X2A + combined Silent-OT +
               6-AND public-T comparison + private-selector OT route.
 
 Both default modes share the optimized threshold-comparison path for every
-threshold, including t=1. --paper-faithful only changes relaxed mode.
+threshold, including t=1.
 
 Options:
   --set-powers LIST       comma list, default: 12,16,20
@@ -81,10 +76,6 @@ Options:
   --rerun-existing        rerun cases even if result_row.csv exists
   --stop-on-error         stop at the first failed case
   --dry-run               print the matrix and exit
-  --paper-faithful        use the arithmetic paper route for relaxed mode;
-                          standard remains on the optimized default
-  --enable-t2-fast-path   enable the relaxed threshold=2 output fast path;
-                          standard remains on the optimized default
   -h, --help              show this help
 
 Output:
@@ -141,10 +132,10 @@ profile_spec() {
 mode_args_for() {
   case "$1" in
     relaxed | relax)
-      printf '%s\n' "--b2a --final-mask arithmetic --final-output client_output_basis"
+      printf '%s\n' "--final-output client_output_basis"
       ;;
     standard | std)
-      printf '%s\n' "--b2a --final-mask arithmetic --final-output leader_only"
+      printf '%s\n' "--final-output leader_only"
       ;;
     *)
       die "unknown mode: $1"
@@ -694,19 +685,6 @@ while (($#)); do
       ;;
     --dry-run)
       DRY_RUN=1
-      shift
-      ;;
-    --paper-faithful)
-      PAPER_FAITHFUL=1
-      export OTMPSI_DISABLE_RELAXED_BOOLEAN_GMW=1
-      export OTMPSI_DISABLE_T2_RELAXED_FAST=1
-      shift
-      ;;
-    --enable-t2-fast-path)
-      ENABLE_T2_FAST_PATH=1
-      unset OTMPSI_DISABLE_RELAXED_BOOLEAN_GMW
-      unset OTMPSI_DISABLE_T2_RELAXED_FAST
-      export OTMPSI_ENABLE_T2_RELAXED_FAST=1
       shift
       ;;
     -h | --help)

@@ -33,18 +33,6 @@ double WireCommMB(size_t lhs_bytes, size_t rhs_bytes) {
       (static_cast<double>(lhs_bytes) + static_cast<double>(rhs_bytes)) / 2.0);
 }
 
-std::string
-MaskPreprocessingName(const examples::otmpsi::OtmpsiParams &params) {
-  if (examples::otmpsi::UsesTreeX2aRoute(params)) {
-    return "tree_x2a_z256_ot";
-  }
-  if (params.final_output_mode ==
-      examples::otmpsi::FinalOutputMode::kClientOutputBasis) {
-    return "relaxed_open_uint8";
-  }
-  return "dealerless_gmw";
-}
-
 examples::otmpsi::RoleStats
 StatAt(const std::vector<examples::otmpsi::RoleStats> &stats, size_t party) {
   if (party >= stats.size()) {
@@ -136,7 +124,6 @@ struct CliConfig {
 
 CliConfig ParseArgs(int argc, char **argv) {
   CliConfig cfg;
-  bool final_mask_set = false;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     auto need_value = [&](const char *name) -> std::string {
@@ -164,28 +151,12 @@ CliConfig ParseArgs(int argc, char **argv) {
     } else if (arg == "--generate-port-map") {
       cfg.generate_port_map = true;
       cfg.port_map_dir = need_value(arg.c_str());
-    } else if (arg == "--b2a") {
-      cfg.params.enable_b2a = true;
-    } else if (arg == "--no-b2a") {
-      cfg.params.enable_b2a = false;
     } else if (arg == "--b2a-backend") {
       const auto value = need_value(arg.c_str());
       if (value == "silent_ot") {
         cfg.params.b2a_backend = examples::otmpsi::B2aBackend::kSilentOt;
       } else {
         throw std::invalid_argument("invalid --b2a-backend: " + value);
-      }
-    } else if (arg == "--final-mask") {
-      const auto value = need_value(arg.c_str());
-      final_mask_set = true;
-      if (value == "boolean_gmw" || value == "boolean") {
-        cfg.params.final_mask_backend =
-            examples::otmpsi::FinalMaskBackend::kBooleanGmw;
-      } else if (value == "arithmetic") {
-        cfg.params.final_mask_backend =
-            examples::otmpsi::FinalMaskBackend::kArithmetic;
-      } else {
-        throw std::invalid_argument("invalid --final-mask: " + value);
       }
     } else if (arg == "--final-output") {
       const auto value = need_value(arg.c_str());
@@ -206,9 +177,7 @@ CliConfig ParseArgs(int argc, char **argv) {
              " [--threads n] [--base-port p]"
              " [--party-id id]"
              " [--generate-port-map dir]"
-             " [--b2a|--no-b2a]"
              " [--b2a-backend silent_ot]"
-             " [--final-mask boolean_gmw|arithmetic]"
              " [--final-output leader_only|client_output_basis]\n"
              "Default routes share Tree-X2A + combined Silent-OT + 6-AND "
              "comparison; only final output handling differs.\n"
@@ -218,14 +187,7 @@ CliConfig ParseArgs(int argc, char **argv) {
       throw std::invalid_argument("unknown argument: " + arg);
     }
   }
-  if (!cfg.params.enable_b2a) {
-    if (final_mask_set && cfg.params.final_mask_backend ==
-                              examples::otmpsi::FinalMaskBackend::kArithmetic) {
-      throw std::invalid_argument("--final-mask arithmetic requires --b2a");
-    }
-    cfg.params.final_mask_backend =
-        examples::otmpsi::FinalMaskBackend::kBooleanGmw;
-  }
+
   return cfg;
 }
 
@@ -270,23 +232,20 @@ int main(int argc, char **argv) {
       }
       std::cout << "peqt_bits=" << examples::otmpsi::PeqtBitWidth(params)
                 << "\n";
-      std::cout << "b2a=" << (params.enable_b2a ? "on" : "off") << "\n";
+      std::cout << "b2a=" << "on" << "\n";
       std::cout << "tree_x2a="
-                << (examples::otmpsi::UsesTreeX2aRoute(params)
-                        ? "on"
-                        : "off")
+                << "on"
                 << "\n";
       std::cout << "b2a_backend="
                 << examples::otmpsi::B2aBackendName(params.b2a_backend) << "\n";
       std::cout << "final_mask_backend="
-                << examples::otmpsi::FinalMaskBackendName(
-                       params.final_mask_backend)
+                << "arithmetic"
                 << "\n";
       std::cout << "final_output_mode="
                 << examples::otmpsi::FinalOutputModeName(
                        params.final_output_mode)
                 << "\n";
-      std::cout << "mask_preprocessing=" << MaskPreprocessingName(params)
+      std::cout << "mask_preprocessing=" << "tree_x2a_z256_ot"
                 << "\n";
       std::cout << "process_model=one_process_per_party\n";
       if (const char *transport = std::getenv("OTMPSI_TRANSPORT")) {
@@ -317,6 +276,9 @@ int main(int argc, char **argv) {
       std::cout << "stage_nparty_gmw_time_s=" << nparty.time_s << "\n";
       std::cout << "stage_nparty_gmw_local_comm_mb="
                 << BytesToMB(nparty.comm_bytes) << "\n";
+      if (!leader && run.client_output_size.has_value()) {
+        std::cout << "output_size=" << *run.client_output_size << "\n";
+      }
       if (leader) {
         std::cout << "output_size=" << run.results.size() << "\n";
         for (size_t i = 0; i < std::min<size_t>(run.results.size(), 8); ++i) {
@@ -346,20 +308,19 @@ int main(int argc, char **argv) {
       std::cout << "target_output_size=" << *params.target_output_size << "\n";
     }
     std::cout << "peqt_bits=" << examples::otmpsi::PeqtBitWidth(params) << "\n";
-    std::cout << "b2a=" << (params.enable_b2a ? "on" : "off") << "\n";
+    std::cout << "b2a=" << "on" << "\n";
     std::cout << "tree_x2a="
-              << (examples::otmpsi::UsesTreeX2aRoute(params) ? "on" : "off")
+              << "on"
               << "\n";
     std::cout << "b2a_backend="
               << examples::otmpsi::B2aBackendName(params.b2a_backend) << "\n";
     std::cout << "final_mask_backend="
-              << examples::otmpsi::FinalMaskBackendName(
-                     params.final_mask_backend)
+              << "arithmetic"
               << "\n";
     std::cout << "final_output_mode="
               << examples::otmpsi::FinalOutputModeName(params.final_output_mode)
               << "\n";
-    std::cout << "mask_preprocessing=" << MaskPreprocessingName(params) << "\n";
+    std::cout << "mask_preprocessing=" << "tree_x2a_z256_ot" << "\n";
     std::cout << std::fixed << std::setprecision(6);
     const auto client_totals = SummarizeClientTotals(stats, params.parties);
     const auto ssbsmt_clients =

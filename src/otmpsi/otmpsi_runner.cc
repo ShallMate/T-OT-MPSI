@@ -21,18 +21,6 @@ void ValidateRunnableParams(const OtmpsiParams &params) {
                  "threshold 1 makes every leader item an output; target "
                  "output size must equal set size");
   }
-  OTMPSI_ENFORCE(!UsesTreeX2aRoute(params) || params.enable_b2a,
-               "optimized Tree-X2A output requires B2A membership shares");
-  OTMPSI_ENFORCE(!UsesTreeX2aRoute(params) ||
-                   params.final_mask_backend == FinalMaskBackend::kArithmetic,
-               "optimized Tree-X2A output requires --final-mask arithmetic");
-  OTMPSI_ENFORCE(params.enable_b2a ||
-                   params.final_mask_backend != FinalMaskBackend::kArithmetic,
-               "arithmetic final mask requires B2A");
-  OTMPSI_ENFORCE(params.final_output_mode == FinalOutputMode::kLeaderOnly ||
-                   (params.enable_b2a &&
-                    params.final_mask_backend == FinalMaskBackend::kArithmetic),
-               "client-output-basis mode requires B2A + arithmetic final mask");
   (void)ChooseBandOkvsParams(params.set_size);
 }
 
@@ -47,19 +35,6 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
                                       const OtmpsiParams &params) {
   ValidateRunnableParams(params);
   OTMPSI_ENFORCE(party_id < params.parties, "party id out of range");
-  const bool threshold_two_relaxed_fast =
-      UsesThresholdTwoRelaxedFastPath(params);
-  const bool tree_x2a = UsesTreeX2aRoute(params);
-  const bool legacy_relaxed_open =
-      !tree_x2a && !threshold_two_relaxed_fast &&
-      params.final_output_mode == FinalOutputMode::kClientOutputBasis;
-  const bool needs_b2a = params.enable_b2a && !threshold_two_relaxed_fast;
-  OTMPSI_ENFORCE((params.enable_b2a &&
-                params.final_mask_backend == FinalMaskBackend::kArithmetic) ||
-                   threshold_two_relaxed_fast,
-               "one-process-per-party mode currently supports the main route: "
-               "optimized standard output or relaxed output");
-
   const auto original_x0 = BuildLeaderSet(params.set_size);
   auto x0 = original_x0;
   OtmpsiStats stats;
@@ -83,7 +58,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
   std::vector<uint128_t> party_bit_share;
   std::vector<uint64_t> party_arith_share;
   std::future<TreeX2aWithGmwPrefixPartyRun> tree_mask_prep_job;
-  if (tree_x2a) {
+  {
     const size_t correlations_per_pair = TreeGmwCorrelationsPerPair(params);
     tree_mask_prep_job = std::async(
         std::launch::async, [params, party_id, correlations_per_pair] {
@@ -117,7 +92,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
         out.zero = zero.stats;
         out.bit_share = std::move(zero.share);
 
-        if (needs_b2a) {
+        {
           const auto b2a_tag = MakeSocketTag(params.base_port, party, 3);
           auto b2a = B2aLeaderSide(out.bit_share, party, params, b2a_tag);
           out.b2a = b2a.stats;
@@ -145,9 +120,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
     stats.ssbsmt.time_s = stats.ssbsmt.leader.time_s;
     stats.pairwise_zero.time_s = stats.pairwise_zero.leader.time_s;
     stats.b2a.time_s = stats.b2a.leader.time_s;
-    if (!needs_b2a) {
-      LogDebug("multiprocess", "party=0 B2A skipped for boolean output");
-    }
+    
   } else {
     LogDebug("multiprocess",
              "party=" + std::to_string(party_id) + " SS-BSMT begin");
@@ -202,7 +175,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
     }
     stats.pairwise_zero.time_s = SecondsSince(zero_start);
 
-    if (needs_b2a) {
+    {
       LogDebug("multiprocess",
                "party=" + std::to_string(party_id) + " B2A begin");
       const auto b2a_start = std::chrono::steady_clock::now();
@@ -229,9 +202,6 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
         stats.b2a.clients = out.stats;
       }
       stats.b2a.time_s = SecondsSince(b2a_start);
-    } else {
-      LogDebug("multiprocess", "party=" + std::to_string(party_id) +
-                                   " B2A skipped for boolean output");
     }
   }
 
@@ -242,18 +212,9 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
            "party=" + std::to_string(party_id) + " output phase begin");
   const auto nparty_start = std::chrono::steady_clock::now();
   std::vector<OtmpsiResult> final_results;
+  std::optional<size_t> client_output_size;
   RoleStats final_output_stats;
-  if (threshold_two_relaxed_fast) {
-    auto relaxed = RunThresholdTwoRelaxedOpenOutputParty(
-        party_id, x0, leader_bit_shares, party_bit_share, params);
-    final_output_stats = relaxed.stats;
-    final_results = std::move(relaxed.results);
-  } else if (legacy_relaxed_open) {
-    auto relaxed = RunRelaxedOpenOutputParty(party_id, x0, leader_arith_shares,
-                                             party_arith_share, params);
-    final_output_stats = relaxed.stats;
-    final_results = std::move(relaxed.results);
-  } else if (tree_x2a) {
+  {
     std::vector<uint64_t> count_share =
         party_id == 0
             ? LeaderCountMinusThresholdShares(leader_arith_shares, params)
@@ -277,6 +238,7 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
           party_id, selection_share.output_share, x0, leader_bit_shares,
           party_id == 0 ? no_party_share : party_bit_share, params);
       selected_stats = selected.stats;
+      client_output_size = selected.output_size;
       final_results = std::move(selected.results);
     } else {
       auto selected = RunPrivateSelectorOtParty(
@@ -305,8 +267,6 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
     final_output_stats.time_s =
         mask_prep_run.tree_stats.time_s + opened.stats.time_s +
         selection_share.stats.time_s + selected_stats.time_s;
-  } else {
-    OTMPSI_THROW("unsupported OT-MPSI output route");
   }
   stats.nparty_gmw.time_s = SecondsSince(nparty_start);
   if (party_id == 0) {
@@ -335,19 +295,11 @@ OtmpsiRun RunOnePartyProcessWithStats(size_t party_id,
                                stats.nparty_gmw.clients.comm_bytes;
     stats.clients.time_s = done_s;
   }
-  return {std::move(final_results), std::move(stats)};
+  return {std::move(final_results), std::move(stats), client_output_size};
 }
 
 OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   ValidateRunnableParams(params);
-  const bool threshold_two_relaxed_fast =
-      UsesThresholdTwoRelaxedFastPath(params);
-  const bool tree_x2a = UsesTreeX2aRoute(params);
-  const bool legacy_relaxed_open =
-      !tree_x2a && !threshold_two_relaxed_fast &&
-      params.final_output_mode == FinalOutputMode::kClientOutputBasis;
-  const bool needs_b2a = params.enable_b2a && !threshold_two_relaxed_fast;
-
   const auto original_x0 = BuildLeaderSet(params.set_size);
   auto x0 = original_x0;
   std::vector<std::vector<uint128_t>> party_sets(params.parties);
@@ -360,7 +312,7 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   const auto hashed_x0 = HashSsBsmtInputs(x0);
   const double input_preparation_s = SecondsSince(protocol_start);
   std::future<TreeX2aWithGmwPrefixRun> tree_mask_prep_job;
-  if (tree_x2a) {
+  {
     const size_t correlations_per_pair = TreeGmwCorrelationsPerPair(params);
     tree_mask_prep_job = std::async(
         std::launch::async, [params, correlations_per_pair] {
@@ -447,7 +399,7 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   LogDebug("stage", "pairwise IS ZERO done time_s=" +
                         std::to_string(stats.pairwise_zero.time_s));
 
-  if (needs_b2a) {
+  {
     LogDebug("stage", "B2A begin");
     const auto b2a_start = std::chrono::steady_clock::now();
     std::vector<std::future<B2aShareWithStats>> leader_b2a_jobs(params.parties);
@@ -483,15 +435,13 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
     stats.b2a.leader.time_s = stats.b2a.time_s;
     stats.b2a.clients.time_s = stats.b2a.time_s;
     LogDebug("stage", "B2A done time_s=" + std::to_string(stats.b2a.time_s));
-  } else if (params.enable_b2a) {
-    LogDebug("stage", "B2A skipped for boolean output");
   }
 
   LogDebug("stage", "output phase begin");
   const auto nparty_start = std::chrono::steady_clock::now();
   MaskedCountCompareData masked_count_data;
   TreeX2aWithGmwPrefixRun tree_mask_prep_run;
-  if (tree_x2a) {
+  {
     LogDebug("n-party-gmw", "Tree-X2A masked count prep begin");
     OTMPSI_ENFORCE(tree_mask_prep_job.valid(),
                  "Tree-X2A preprocessing job was not started");
@@ -515,21 +465,7 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
   RoleStats gmw_leader;
   RoleStats gmw_clients;
   std::vector<RoleStats> gmw_client_stats;
-  if (threshold_two_relaxed_fast) {
-    auto relaxed = RunThresholdTwoRelaxedOpenOutput(x0, leader_bit_shares,
-                                                    party_bit_shares, params);
-    gmw_results = std::move(relaxed.results);
-    gmw_leader = relaxed.leader;
-    gmw_clients = relaxed.clients;
-    gmw_client_stats = std::move(relaxed.client_stats);
-  } else if (legacy_relaxed_open) {
-    auto relaxed = RunRelaxedOpenOutput(x0, leader_arith_shares,
-                                        party_arith_shares, params);
-    gmw_results = std::move(relaxed.results);
-    gmw_leader = relaxed.leader;
-    gmw_clients = relaxed.clients;
-    gmw_client_stats = std::move(relaxed.client_stats);
-  } else if (tree_x2a) {
+  {
     auto selection = RunNPartySharedOutputGmwWithPreprocessing(
         gmw_inputs, std::move(tree_mask_prep_run.gmw_prefixes), params,
         "tree-x2a-compare", BuildPublicTMaskedCompareCircuit(), 1);
@@ -573,8 +509,6 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
         gmw_clients.comm_bytes += masked_count_data.open_comm_bytes[party];
       }
     }
-  } else {
-    OTMPSI_THROW("unsupported OT-MPSI output route");
   }
   stats.nparty_gmw.time_s = SecondsSince(nparty_start);
   stats.nparty_gmw.leader = gmw_leader;
@@ -600,7 +534,10 @@ OtmpsiRun RunDemoWithStats(const OtmpsiParams &params) {
 
   auto out = std::move(gmw_results);
   CheckDemoResults(out, ExpectedDemoResults(params, original_x0));
-  return {std::move(out), std::move(stats)};
+  const auto client_output_size =
+      params.final_output_mode == FinalOutputMode::kClientOutputBasis
+          ? std::make_optional(out.size()) : std::nullopt;
+  return {std::move(out), std::move(stats), client_output_size};
 }
 
 std::vector<OtmpsiResult> RunDemo(const OtmpsiParams &params) {

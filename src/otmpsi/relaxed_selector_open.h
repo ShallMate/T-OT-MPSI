@@ -7,6 +7,7 @@ namespace examples::otmpsi {
 struct RelaxedSelectorOpenPartyRun {
   std::vector<OtmpsiResult> results;
   RoleStats stats;
+  size_t output_size = 0;
 };
 
 struct RelaxedSelectorOpenRun {

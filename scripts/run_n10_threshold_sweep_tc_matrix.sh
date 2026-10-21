@@ -19,8 +19,6 @@ RERUN_EXISTING=0
 STOP_ON_ERROR=0
 DRY_RUN=0
 NO_UNSHARE=0
-PAPER_FAITHFUL=0
-ENABLE_T2_FAST_PATH=0
 
 usage() {
   cat <<'EOF'
@@ -58,8 +56,6 @@ Options:
   --stop-on-error        stop at the first failed case
   --no-unshare           apply tc in the current network namespace
   --dry-run              print the matrix and exit
-  --paper-faithful       use the arithmetic paper route for relaxed mode only
-  --enable-t2-fast-path  enable the relaxed threshold=2 output fast path only
   -h, --help             show this help
 EOF
 }
@@ -199,14 +195,6 @@ while (($#)); do
       DRY_RUN=1
       shift
       ;;
-    --paper-faithful)
-      PAPER_FAITHFUL=1
-      shift
-      ;;
-    --enable-t2-fast-path)
-      ENABLE_T2_FAST_PATH=1
-      shift
-      ;;
     -h | --help)
       usage
       exit 0
@@ -266,12 +254,6 @@ for threshold in $(split_csv_list "${THRESHOLDS}"); do
   fi
   if ((DRY_RUN)); then
     args+=(--dry-run)
-  fi
-  if ((PAPER_FAITHFUL)); then
-    args+=(--paper-faithful)
-  fi
-  if ((ENABLE_T2_FAST_PATH)); then
-    args+=(--enable-t2-fast-path)
   fi
 
   log "threshold=${threshold} set=2^${SET_POWER}"

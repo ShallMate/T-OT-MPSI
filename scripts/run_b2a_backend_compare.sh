@@ -153,8 +153,7 @@ echo "[b2a-backend-compare] log_dir=${LOG_DIR}"
   --set-size "$SET_SIZE" \
   --threshold "$THRESHOLD" \
   --threads "$THREADS" \
-  --base-port "$BASE_PORT" \
-  --b2a | tee "$OTMPSI_LOG"
+  --base-port "$BASE_PORT" | tee "$OTMPSI_LOG"
 
 ot_b2a_time="$(extract_kv "$OTMPSI_LOG" "stage_b2a_time_s")"
 ot_b2a_leader_mb="$(extract_kv "$OTMPSI_LOG" "stage_b2a_leader_comm_mb")"

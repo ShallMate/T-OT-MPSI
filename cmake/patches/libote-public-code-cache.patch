@@ -1,0 +1,158 @@
+diff --git a/libOTe/Tools/BlkAccCode/Accumulator.h b/libOTe/Tools/BlkAccCode/Accumulator.h
+--- a/libOTe/Tools/BlkAccCode/Accumulator.h
++++ b/libOTe/Tools/BlkAccCode/Accumulator.h
+@@ -5,6 +5,7 @@
+ #include "cryptoTools/Common/Aligned.h"
+ #include "cryptoTools/Crypto/PRNG.h"
+ #include "Permutation.h"
++#include "PublicCodeCache.h"
+ #include "libOTe/Tools/LDPC/Mtx.h"
+ 
+ namespace osuCrypto
+@@ -77,6 +78,29 @@
+ 		void dualEncode(InIter inIter, OutIter outIter, CoeffCtx ctx)
+ 		{
+ 			mPerm.init(mN);
++
++            if constexpr (std::is_same_v<Perm, Feistel2KPerm> &&
++                          std::is_same_v<F, block> &&
++                          std::is_same_v<InIter, block*> &&
++                          std::is_same_v<OutIter, block*> &&
++                          std::is_same_v<CoeffCtx, CoeffCtxGF2>) {
++                if (mN && mN % Perm::chunkSize == 0 && mN <= (u64{1} << 20)) {
++                    std::vector<u64> key{0, mN};
++                    key.insert(key.end(), mPerm.mKeys.begin(), mPerm.mKeys.end());
++                    auto indices = detail::cachedPublicCode(key, [&] {
++                        std::vector<u32> values(mN);
++                        for (u64 i = 0; i < mN; ++i)
++                            values[i] = mPerm.feistelBijection(static_cast<u32>(i));
++                        return values;
++                    });
++                    block sum = ZeroBlock;
++                    for (u64 i = 0; i < mN; ++i) {
++                        sum ^= inIter[i];
++                        outIter[(*indices)[i]] = sum;
++                    }
++                    return;
++                }
++            }
+ 
+ 			if constexpr (HasChunkSize<Perm>::value == false)
+ 			{
+diff --git a/libOTe/Tools/BlkAccCode/BlockDiagonal.h b/libOTe/Tools/BlkAccCode/BlockDiagonal.h
+--- a/libOTe/Tools/BlkAccCode/BlockDiagonal.h
++++ b/libOTe/Tools/BlkAccCode/BlockDiagonal.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include "BaseCode.h"
++#include "PublicCodeCache.h"
+ #include "Randomness.h" // For xorshifthash
+ #include <cryptoTools/Common/Defines.h>
+ #include <cryptoTools/Crypto/AES.h>
+@@ -93,6 +94,60 @@
+ 		template<typename F, typename CoeffCtx>
+ 		void dualEncode(auto iter, CoeffCtx ctx) {
+ 
++            if constexpr (std::is_same_v<F, block> &&
++                          std::is_same_v<decltype(iter), block*> &&
++                          std::is_same_v<CoeffCtx, CoeffCtxGF2> &&
++                          std::is_same_v<Rand, BlockDiagXorShift>) {
++                if (mK && mSigma == 32 && mN == 2 * mK && mK % 32 == 0 &&
++                    mK <= (u64{1} << 20)) {
++                    const std::vector<u64> key{
++                        1, mK, mSeed.get<u64>(0), mSeed.get<u64>(1)};
++                    auto coefficients = detail::cachedPublicCode(key, [&] {
++                        std::vector<u32> values(mK);
++                        auto seed = mSeed;
++                        Rand random(seed);
++                        auto bits = random();
++                        u64 index = 0, count = 0;
++                        for (u64 row = 0; row < mK; ++row) {
++                            u32 mask = 0;
++                            for (unsigned bit = 0; bit < 32; ++bit) {
++                                if (index == 128) {
++                                    if (count++ == 128) {
++                                        seed = mAesFixedKey.hashBlock(seed);
++                                        random = Rand(seed);
++                                        count = 0;
++                                    }
++                                    index = 0;
++                                    bits = random();
++                                }
++                                mask |= static_cast<u32>(*bits++) << bit;
++                                ++index;
++                            }
++                            values[row] = mask;
++                        }
++                        return values;
++                    });
++                    // Four-input subset sums evaluate the same public matrix.
++                    std::array<block, 16> table;
++                    table[0] = ZeroBlock;
++                    for (u64 begin = 0; begin < mK; begin += 32) {
++                        auto x = iter + begin;
++                        auto y = iter + mK + begin;
++                        for (unsigned group = 0; group < 8; ++group) {
++                            for (unsigned mask = 1; mask < 16; ++mask) {
++                                const unsigned bit = static_cast<unsigned>(__builtin_ctz(mask));
++                                table[mask] = table[mask & (mask - 1)] ^ y[group * 4 + bit];
++                            }
++                            for (unsigned row = 0; row < 32; ++row) {
++                                const unsigned mask = ((*coefficients)[begin + row] >> (group * 4)) & 15;
++                                x[row] ^= table[mask];
++                            }
++                        }
++                    }
++                    return;
++                }
++            }
++
+ 
+ 			// x += G * y
+ 
+diff --git a/libOTe/Tools/BlkAccCode/PublicCodeCache.h b/libOTe/Tools/BlkAccCode/PublicCodeCache.h
+--- /dev/null
++++ b/libOTe/Tools/BlkAccCode/PublicCodeCache.h
+@@ -0,0 +1,42 @@
++#pragma once
++
++#include <map>
++#include <memory>
++#include <mutex>
++#include <type_traits>
++#include <vector>
++#include "cryptoTools/Common/Defines.h"
++#include "libOTe/Tools/CoeffCtx.h"
++
++namespace osuCrypto::detail {
++
++// Public code descriptions only. Never cache OT outputs or private vectors.
++// Stored index/coefficient data is bounded to 16 MiB per process.
++struct PublicCodeCacheState {
++    std::mutex mutex;
++    std::map<std::vector<u64>, std::shared_ptr<const std::vector<u32>>> entries;
++    size_t bytes = 0;
++};
++
++inline PublicCodeCacheState& publicCodeCache() {
++    static PublicCodeCacheState cache;
++    return cache;
++}
++
++template <typename Builder>
++std::shared_ptr<const std::vector<u32>> cachedPublicCode(
++    const std::vector<u64>& key, Builder&& build) {
++    auto& cache = publicCodeCache();
++    std::lock_guard<std::mutex> lock(cache.mutex);
++    auto found = cache.entries.find(key);
++    if (found != cache.entries.end()) return found->second;
++    auto data = std::make_shared<const std::vector<u32>>(build());
++    const size_t bytes = data->size() * sizeof(u32);
++    if (bytes <= (size_t{16} << 20) - cache.bytes) {
++        cache.entries.emplace(key, data);
++        cache.bytes += bytes;
++    }
++    return data;
++}
++
++} // namespace osuCrypto::detail

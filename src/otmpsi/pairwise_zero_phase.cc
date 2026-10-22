@@ -71,8 +71,13 @@ size_t PeqtBitWidth(const OtmpsiParams &params) {
   return peqt_bits;
 }
 
-size_t PeqtTripleBatchSize() {
-  return ParsePositiveEnvSize("OTMPSI_PEQ_TRIPLE_BATCH_SIZE", 1 << 15);
+size_t PeqtTripleBatchSize(const OtmpsiParams &params) {
+  // Keep small instances cache-sized. For the paper's power-of-two set sizes,
+  // the chosen batch divides 2*n*AND_gates without redistributing the batch
+  // into non-power-of-two encodings. Larger instances amortize base-OT setup.
+  const size_t batch = std::max<size_t>(
+      size_t{1} << 15, 2 * std::min<size_t>(params.set_size, size_t{1} << 17));
+  return ParsePositiveEnvSize("OTMPSI_PEQ_TRIPLE_BATCH_SIZE", batch);
 }
 
 std::vector<uint8_t>
@@ -106,7 +111,7 @@ ShareWithStats PairwiseZeroSide(const std::vector<uint128_t> &shares,
   gmw.setInput(0, input);
   const double init_time_s = SecondsSince(init_start);
   const auto triple_start = std::chrono::steady_clock::now();
-  const size_t triple_batch_size = PeqtTripleBatchSize();
+  const size_t triple_batch_size = PeqtTripleBatchSize(params);
   macoro::sync_wait(gmw.generateTriple(
       static_cast<volePSI::u64>(triple_batch_size),
       std::max<size_t>(1, params.threads), sock));

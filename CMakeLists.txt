@@ -49,6 +49,10 @@ if(OTMPSI_BUILD_TESTS)
   target_link_libraries(input_preparation_test PRIVATE otmpsi::otmpsi)
   add_test(NAME input_preparation_test COMMAND input_preparation_test)
 
+  add_executable(silent_code_test tests/silent_code_test.cc)
+  target_link_libraries(silent_code_test PRIVATE otmpsi::otmpsi)
+  add_test(NAME silent_code_test COMMAND silent_code_test)
+
   add_executable(band_okvs_codec_test tests/band_okvs_codec_test.cc)
   target_link_libraries(band_okvs_codec_test PRIVATE otmpsi::otmpsi)
   add_test(NAME band_okvs_codec_test COMMAND band_okvs_codec_test)

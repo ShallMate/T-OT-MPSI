@@ -67,7 +67,7 @@ Options:
                           per-case timeout; 0 disables it (default: 0)
   --peq-triple-batch-size N
                           override PEQT silent-triple batch size
-                          default: binary default 32768
+                          default: automatic, 32768 to 262144 by set size
   --gmw-simd MODE         N-party GMW word SIMD: scalar, avx2, or avx512
                           default: current OTMPSI_GMW_SIMD environment
   --log-root DIR          default: bench_results/otmpsi_relax_standard_tc_...
@@ -500,7 +500,7 @@ run_case_payload() {
     unset GOMP_CPU_AFFINITY KMP_AFFINITY OMP_PLACES
     export OMP_PROC_BIND=false
     export OTMPSI_LOG_ROOT="${case_dir}"
-    log "PEQT triple batch size=${OTMPSI_PEQ_TRIPLE_BATCH_SIZE:-32768}"
+    log "PEQT triple batch size=${OTMPSI_PEQ_TRIPLE_BATCH_SIZE:-auto}"
 
     local port_map_dir="${case_dir}/port_map"
     mkdir -p "${port_map_dir}"

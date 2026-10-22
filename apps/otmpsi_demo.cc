@@ -232,6 +232,8 @@ int main(int argc, char **argv) {
       }
       std::cout << "peqt_bits=" << examples::otmpsi::PeqtBitWidth(params)
                 << "\n";
+      std::cout << "peqt_triple_batch_size="
+                << examples::otmpsi::PeqtTripleBatchSize(params) << "\n";
       std::cout << "b2a=" << "on" << "\n";
       std::cout << "tree_x2a="
                 << "on"
@@ -308,6 +310,8 @@ int main(int argc, char **argv) {
       std::cout << "target_output_size=" << *params.target_output_size << "\n";
     }
     std::cout << "peqt_bits=" << examples::otmpsi::PeqtBitWidth(params) << "\n";
+    std::cout << "peqt_triple_batch_size="
+              << examples::otmpsi::PeqtTripleBatchSize(params) << "\n";
     std::cout << "b2a=" << "on" << "\n";
     std::cout << "tree_x2a="
               << "on"

@@ -89,6 +89,16 @@ if(NOT TARGET libOTe)
       COMMAND
       "${CMAKE_COMMAND}" -DLIBOTE_SOURCE_DIR=<SOURCE_DIR>
         -P "${CMAKE_CURRENT_LIST_DIR}/PatchLibOte.cmake"
+      COMMAND
+      "${CMAKE_COMMAND}"
+        -DPATCH_SOURCE_DIR=<SOURCE_DIR>
+        -DPATCH_FILE=${CMAKE_CURRENT_LIST_DIR}/patches/libote-ea-config-order.patch
+        -P "${CMAKE_CURRENT_LIST_DIR}/ApplyGnuPatchIfNeeded.cmake"
+      COMMAND
+      "${CMAKE_COMMAND}"
+        -DPATCH_SOURCE_DIR=<SOURCE_DIR>
+        -DPATCH_FILE=${CMAKE_CURRENT_LIST_DIR}/patches/libote-public-code-cache.patch
+        -P "${CMAKE_CURRENT_LIST_DIR}/ApplyGnuPatchIfNeeded.cmake"
   )
   FetchContent_MakeAvailable(libote)
 endif()

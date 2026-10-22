@@ -7,6 +7,7 @@ namespace examples::otmpsi {
 volePSI::Matrix<volePSI::u8> MakeGmwInput(const std::vector<uint128_t> &shares,
                                           size_t bit_width = 128);
 size_t PeqtBitWidth(const OtmpsiParams &params);
+size_t PeqtTripleBatchSize(const OtmpsiParams &params);
 std::vector<uint8_t>
 DecodeBitShareOutput(const volePSI::Matrix<volePSI::u8> &out, size_t row_count);
 ShareWithStats PairwiseZeroSide(const std::vector<uint128_t> &shares,

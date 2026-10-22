@@ -1,0 +1,13 @@
+diff --git a/libOTe/TwoChooseOne/ConfigureCode.cpp b/libOTe/TwoChooseOne/ConfigureCode.cpp
+--- a/libOTe/TwoChooseOne/ConfigureCode.cpp
++++ b/libOTe/TwoChooseOne/ConfigureCode.cpp
+@@ -52,8 +52,8 @@
+ 
+     void EAConfigure(
+         MultType mMultType,
+-        u64& expanderWeight,
+         u64& scaler,
++        u64& expanderWeight,
+         double& minDist
+     )
+     {

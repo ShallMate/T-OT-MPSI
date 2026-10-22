@@ -38,8 +38,9 @@ void DebugLogSilentTriple(const std::string &msg) {
 
 oc::MultType SilentMultTypeFromEnv() {
   const char *env = std::getenv("OTMPSI_SILENT_MULT_TYPE");
-  if (env == nullptr || env[0] == '\0' || std::string_view(env) == "exacc11") {
-    return oc::MultType::ExAcc11;
+  // Preserve the code previously selected by libOTe's configure() default.
+  if (env == nullptr || env[0] == '\0') {
+    return oc::MultType::BlkAcc3x32;
   }
   const std::string_view value(env);
   if (value == "tungsten") {
@@ -263,9 +264,9 @@ void SilentTripleGen::init(u64 n, u64 batchSize, u64 numThreads, Mode mode,
                               : oc::SdNoiseDistribution::Regular,
         mult_type);
 #else
-    mImpl->mSenderOT[i].mLpnMultType = mult_type;
     mImpl->mSenderOT[i].configure(mImpl->mNumPer, 2, numThreads,
-                                  oc::SilentSecType::SemiHonest);
+                                  oc::SilentSecType::SemiHonest,
+                                  oc::SdNoiseDistribution::Regular, mult_type);
 #endif
   }
   for (u64 i = 0; i < mImpl->mRecverOT.size(); i++) {
@@ -276,9 +277,9 @@ void SilentTripleGen::init(u64 n, u64 batchSize, u64 numThreads, Mode mode,
                               : oc::SdNoiseDistribution::Regular,
         mult_type);
 #else
-    mImpl->mRecverOT[i].mLpnMultType = mult_type;
     mImpl->mRecverOT[i].configure(mImpl->mNumPer, 2, numThreads,
-                                  oc::SilentSecType::SemiHonest);
+                                  oc::SilentSecType::SemiHonest,
+                                  oc::SdNoiseDistribution::Regular, mult_type);
 #endif
   }
 }
